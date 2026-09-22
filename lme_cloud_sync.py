@@ -60,43 +60,6 @@ def get_westmetall_cash_prices_with_change(page):
             
     return {'date': date_str, 'prices': results}
 
-def get_jx_copper(page):
-    try:
-        page.goto('https://www.jx-nmm.com/cuprice/', wait_until='networkidle', timeout=60000)
-        tables = page.query_selector_all('table')
-        
-        current_year_tables = []
-        for tbl in tables:
-            rows = tbl.query_selector_all('tr')
-            if len(rows) > 0:
-                header = rows[0].inner_text().strip().replace('\n', ' ')
-                if '改定日' in header and '建値' in header:
-                    current_year_tables.append(tbl)
-                    
-        target_tbl = None
-        for tbl in reversed(current_year_tables[:2]):
-            rows = tbl.query_selector_all('tr')
-            if len(rows) > 1:
-                target_tbl = tbl
-                break
-                
-        if not target_tbl and len(current_year_tables) > 0:
-            target_tbl = current_year_tables[0]
-            
-        if target_tbl:
-            target_rows = target_tbl.query_selector_all('tr')
-            last_row = target_rows[-1]
-            text = last_row.inner_text().strip().replace('\n', ' ')
-            m = re.search(r'([0-9]{1,2}\s*月\s*[0-9]{1,2}\s*日).*?([0-9,]+)\s*円', text)
-            if m:
-                return {
-                    'date': m.group(1).replace(' ', ''),
-                    'price': m.group(2) + '円/t'
-                }
-    except Exception as e:
-        print('JX Error:', e)
-    return None
-
 def get_boj_forex(page):
     try:
         page.goto('https://www.boj.or.jp/statistics/market/forex/fxdaily/index.htm', wait_until='networkidle', timeout=60000)
@@ -166,6 +129,134 @@ def get_boj_forex(page):
         print('BOJ Error:', e)
     return None
 
+def get_jx_copper(page):
+    try:
+        page.goto('https://www.jx-nmm.com/cuprice/', wait_until='networkidle', timeout=60000)
+        tables = page.query_selector_all('table')
+        
+        current_year_tables = []
+        for tbl in tables:
+            rows = tbl.query_selector_all('tr')
+            if len(rows) > 0:
+                header = rows[0].inner_text().strip().replace('\n', ' ')
+                if '改定日' in header and '建値' in header:
+                    current_year_tables.append(tbl)
+                    
+        target_tbl = None
+        for tbl in reversed(current_year_tables[:2]):
+            rows = tbl.query_selector_all('tr')
+            if len(rows) > 1:
+                target_tbl = tbl
+                break
+                
+        if not target_tbl and len(current_year_tables) > 0:
+            target_tbl = current_year_tables[0]
+            
+        if target_tbl:
+            target_rows = target_tbl.query_selector_all('tr')
+            if len(target_rows) >= 2:
+                last_row = target_rows[-1]
+                prev_row = target_rows[-2]
+                
+                t_last = last_row.inner_text().strip().replace('\n', ' ')
+                t_prev = prev_row.inner_text().strip().replace('\n', ' ')
+                
+                m_last = re.search(r'([0-9]{1,2}\s*月\s*[0-9]{1,2}\s*日).*?([0-9,]+)\s*円', t_last)
+                m_prev = re.search(r'([0-9]{1,2}\s*月\s*[0-9]{1,2}\s*日).*?([0-9,]+)\s*円', t_prev)
+                
+                if m_last:
+                    p_curr = int(m_last.group(2).replace(',', ''))
+                    p_prev = int(m_prev.group(2).replace(',', '')) if m_prev else None
+                    
+                    diff_val = p_curr - p_prev if p_prev else 0
+                    diff_pct = (diff_val / p_prev) * 100 if p_prev else 0.0
+                    
+                    diff_str = f'{diff_val:+,}円/t' if diff_val != 0 else '±0円/t'
+                    
+                    return {
+                        'date': m_last.group(1).replace(' ', ''),
+                        'price': f'{p_curr:,}円/t',
+                        'prev_date': m_prev.group(1).replace(' ', '') if m_prev else '',
+                        'prev_price': f'{p_prev:,}円/t' if p_prev else '',
+                        'diff': diff_str,
+                        'diff_pct': round(diff_pct, 2)
+                    }
+    except Exception as e:
+        print('JX Error:', e)
+    return None
+
+def get_tokyo_steel_shindan(page):
+    try:
+        pdf_url = None
+        update_date = None
+        
+        page.goto('https://www.tokyosteel.co.jp/scrapprice/', wait_until='networkidle', timeout=60000)
+        a_list = page.query_selector_all('a')
+        for a in a_list:
+            text = a.inner_text().strip().replace('\n', ' ')
+            href = a.get_attribute('href') or ''
+            if '.pdf' in href and any(c.isdigit() for c in text):
+                update_date = text
+                pdf_url = 'https://www.tokyosteel.co.jp' + href.replace('../', '/') if href.startswith('../') else href
+                break
+                
+        if not pdf_url:
+            return None
+            
+        req = urllib.request.Request(pdf_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as resp:
+            pdf_bytes = resp.read()
+
+        reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+        page0_lines = [l.strip() for l in reader.pages[0].extract_text().split('\n') if l.strip()]
+        page1_lines = [l.strip() for l in reader.pages[1].extract_text().split('\n') if l.strip()] if len(reader.pages) > 1 else []
+        
+        apply_date = update_date
+        for line in page0_lines:
+            if '適用開始日' in line or '午前' in line:
+                m = re.search(r'([0-9]{4}年\s*[0-9]{1,2}月\s*[0-9]{1,2}日)', line)
+                if m:
+                    apply_date = m.group(1).replace(' ', '')
+                    break
+                    
+        prices = []
+        changes = []
+        
+        for line in page0_lines:
+            if '新' in line and '断' in line:
+                nums = re.findall(r'([0-9]{2},[0-9]{3})', line)
+                if nums and not prices:
+                    prices = nums
+                    
+        for line in page1_lines:
+            if '新' in line and '断' in line:
+                nums = re.findall(r'([\+-][0-9,]+|0)', line)
+                if nums and not changes:
+                    changes = nums
+                    
+        factories = ['田原(海上)', '田原(陸上)', '岡山(陸上)', '関西サテライト', '九州(陸上)', '宇都宮(陸上)']
+        
+        details = {}
+        for i, fac in enumerate(factories):
+            p_val = prices[i] if i < len(prices) else 'N/A'
+            c_val = changes[i] if i < len(changes) else '0'
+            
+            c_fmt = c_val + '円/t' if c_val.startswith('+') or c_val.startswith('-') else ('+' + c_val + '円/t' if c_val != '±0' and c_val != '0' else '±0円/t')
+            
+            details[fac] = {
+                'price': p_val + '円/t' if p_val != 'N/A' else 'N/A',
+                'change': c_fmt
+            }
+            
+        return {
+            'update_date': update_date,
+            'apply_date': apply_date,
+            'details': details
+        }
+    except Exception as e:
+        print('Tokyo Steel Error:', e)
+        return None
+
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -174,8 +265,9 @@ def main():
         )
         
         westmetall_data = get_westmetall_cash_prices_with_change(page)
-        jx_copper = get_jx_copper(page)
         boj_forex = get_boj_forex(page)
+        jx_copper = get_jx_copper(page)
+        tokyo_steel = get_tokyo_steel_shindan(page)
         
         browser.close()
         
@@ -190,8 +282,9 @@ def main():
     payload = {
         'date': today_str,
         'lme_cash': westmetall_data,
+        'boj_forex': boj_forex,
         'jx_copper': jx_copper,
-        'boj_forex': boj_forex
+        'tokyo_steel': tokyo_steel
     }
     
     if not GAS_WEBHOOK_URL:
