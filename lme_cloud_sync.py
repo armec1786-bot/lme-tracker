@@ -12,60 +12,53 @@ from playwright.sync_api import sync_playwright
 
 GAS_WEBHOOK_URL = os.environ.get('GAS_WEBHOOK_URL', '')
 
-METALS = {
-    'copper': {'name': '銅 (Copper)', 'url_slug': 'lme-copper'},
-    'aluminium': {'name': 'アルミニウム (Aluminium)', 'url_slug': 'lme-aluminium'},
-    'zinc': {'name': '亜鉛 (Zinc)', 'url_slug': 'lme-zinc'},
-    'lead': {'name': '鉛 (Lead)', 'url_slug': 'lme-lead'},
-    'nickel': {'name': 'ニッケル (Nickel)', 'url_slug': 'lme-nickel'},
-    'tin': {'name': 'スズ (Tin)', 'url_slug': 'lme-tin'}
-}
-
-def fetch_single_metal(page, url_slug, max_retries=3):
-    url = f"https://www.lme.com/Metals/Non-ferrous/{url_slug}"
+def get_westmetall_cash_prices_with_change(page):
+    fields = {
+        'copper': ('銅 (Copper)', 'LME_Cu_cash'),
+        'tin': ('スズ (Tin)', 'LME_Sn_cash'),
+        'lead': ('鉛 (Lead)', 'LME_Pb_cash'),
+        'zinc': ('亜鉛 (Zinc)', 'LME_Zn_cash'),
+        'aluminium': ('アルミニウム (Aluminium)', 'LME_Al_cash'),
+        'nickel': ('ニッケル (Nickel)', 'LME_Ni_cash'),
+    }
     
-    for attempt in range(1, max_retries + 1):
-        try:
-            page.goto(url, wait_until='networkidle', timeout=60000)
-            page.wait_for_timeout(3000)
-            
-            body_text = page.inner_text('body')
-            lines = [l.strip() for l in body_text.split('\n') if l.strip()]
-            
-            price = None
-            change_pct = None
-            
-            for i, line in enumerate(lines):
-                if '3-month closing price' in line.lower():
-                    if i >= 2:
-                        raw_price = lines[i-2].replace(',', '').replace('$', '').strip()
-                        raw_change = lines[i-1].replace('%', '').strip()
-                        try:
-                            price = float(raw_price)
-                            change_pct = float(raw_change)
-                        except ValueError:
-                            pass
-                    break
-            
-            if price is not None:
-                return price, change_pct
-            
-            time.sleep(2)
-        except Exception as e:
-            time.sleep(2)
-            
-    return None, None
-
-def fetch_lme_official_prices(page):
     results = {}
-    for key, info in METALS.items():
-        price, change_pct = fetch_single_metal(page, info['url_slug'])
-        results[key] = {
-            'name': info['name'],
-            'price': price,
-            'change_pct': change_pct
-        }
-    return results
+    date_str = ''
+    
+    for key, (name, field_name) in fields.items():
+        try:
+            url = 'https://www.westmetall.com/en/markdaten.php?action=table&field=' + field_name
+            page.goto(url, wait_until='networkidle', timeout=60000)
+            
+            tables = page.query_selector_all('table')
+            if tables:
+                rows = tables[0].query_selector_all('tr')
+                if len(rows) >= 3:
+                    tds1 = rows[1].query_selector_all('td')
+                    tds2 = rows[2].query_selector_all('td')
+                    
+                    if len(tds1) >= 2 and len(tds2) >= 2:
+                        if not date_str:
+                            date_str = tds1[0].inner_text().strip()
+                            
+                        p1_str = tds1[1].inner_text().strip().replace(',', '')
+                        p2_str = tds2[1].inner_text().strip().replace(',', '')
+                        
+                        price1 = float(p1_str)
+                        price2 = float(p2_str)
+                        change_usd = price1 - price2
+                        change_pct = (change_usd / price2) * 100 if price2 != 0 else 0.0
+                        
+                        results[key] = {
+                            'name': name,
+                            'price_usd': price1,
+                            'change_usd': round(change_usd, 2),
+                            'change_pct': round(change_pct, 2)
+                        }
+        except Exception as e:
+            print(f'Westmetall Error ({key}):', e)
+            
+    return {'date': date_str, 'prices': results}
 
 def get_jx_copper(page):
     try:
@@ -80,17 +73,26 @@ def get_jx_copper(page):
                 if '改定日' in header and '建値' in header:
                     current_year_tables.append(tbl)
                     
-        target_tbl = current_year_tables[1] if len(current_year_tables) >= 2 else current_year_tables[0]
-        target_rows = target_tbl.query_selector_all('tr')
-        last_row = target_rows[-1]
-        
-        text = last_row.inner_text().strip().replace('\n', ' ')
-        m = re.search(r'([0-9]{1,2}\s*月\s*[0-9]{1,2}\s*日).*?([0-9,]+)\s*円', text)
-        if m:
-            return {
-                'date': m.group(1).replace(' ', ''),
-                'price': m.group(2) + '円/t'
-            }
+        target_tbl = None
+        for tbl in reversed(current_year_tables[:2]):
+            rows = tbl.query_selector_all('tr')
+            if len(rows) > 1:
+                target_tbl = tbl
+                break
+                
+        if not target_tbl and len(current_year_tables) > 0:
+            target_tbl = current_year_tables[0]
+            
+        if target_tbl:
+            target_rows = target_tbl.query_selector_all('tr')
+            last_row = target_rows[-1]
+            text = last_row.inner_text().strip().replace('\n', ' ')
+            m = re.search(r'([0-9]{1,2}\s*月\s*[0-9]{1,2}\s*日).*?([0-9,]+)\s*円', text)
+            if m:
+                return {
+                    'date': m.group(1).replace(' ', ''),
+                    'price': m.group(2) + '円/t'
+                }
     except Exception as e:
         print('JX Error:', e)
     return None
@@ -129,6 +131,7 @@ def get_boj_forex(page):
         date_str = ''
         at17_str = ''
         central_str = ''
+        central_num = None
         high_val = ''
         low_val = ''
         
@@ -148,11 +151,14 @@ def get_boj_forex(page):
                     if m_l: low_val = m_l.group(1) + '円'
                 if i + 4 < len(lines):
                     m_c = re.search(r'([1-2][0-9]{2}\.[0-9]{2})', lines[i+4])
-                    if m_c: central_str = m_c.group(1) + '円'
+                    if m_c:
+                        central_num = float(m_c.group(1))
+                        central_str = f'{central_num:.2f}円'
                     
         return {
             'date': date_str,
             'central_rate': central_str,
+            'central_num': central_num,
             'at17': at17_str,
             'range': f'{low_val} ～ {high_val}' if low_val and high_val else 'N/A'
         }
@@ -167,16 +173,23 @@ def main():
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         )
         
-        lme_prices = fetch_lme_official_prices(page)
+        westmetall_data = get_westmetall_cash_prices_with_change(page)
         jx_copper = get_jx_copper(page)
         boj_forex = get_boj_forex(page)
         
         browser.close()
         
+    # 円換算計算
+    central_num = boj_forex.get('central_num') if boj_forex else None
+    if westmetall_data and westmetall_data.get('prices') and central_num:
+        for k, v in westmetall_data['prices'].items():
+            price_jpy = round(v['price_usd'] * central_num)
+            v['price_jpy'] = price_jpy
+            
     today_str = datetime.date.today().strftime('%Y-%m-%d')
     payload = {
         'date': today_str,
-        'data': lme_prices,
+        'lme_cash': westmetall_data,
         'jx_copper': jx_copper,
         'boj_forex': boj_forex
     }
