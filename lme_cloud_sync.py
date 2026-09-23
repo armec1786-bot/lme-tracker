@@ -185,7 +185,7 @@ def get_jx_copper(page):
         print('JX Error:', e)
     return None
 
-def get_tokyo_steel_shindan(page):
+def get_tokyo_steel_tahara(page):
     try:
         pdf_url = None
         update_date = None
@@ -219,42 +219,101 @@ def get_tokyo_steel_shindan(page):
                     apply_date = m.group(1).replace(' ', '')
                     break
                     
-        prices = []
-        changes = []
-        
-        for line in page0_lines:
-            if '新' in line and '断' in line:
-                nums = re.findall(r'([0-9]{2},[0-9]{3})', line)
-                if nums and not prices:
-                    prices = nums
+        def parse_lines(lines, is_change=False):
+            res = {}
+            for line in lines:
+                nums = re.findall(r'([\+-]?[0-9]{1,2},[0-9]{3}|[\+-]?[0-9]{3}|0)', line)
+                if not nums:
+                    continue
                     
-        for line in page1_lines:
-            if '新' in line and '断' in line:
-                nums = re.findall(r'([\+-][0-9,]+|0)', line)
-                if nums and not changes:
-                    changes = nums
+                target_key = None
+                if '電' in line and '特' in line and 'Ａ' in line:
+                    target_key = '電特A'
+                elif '特' in line and 'Ａ' in line and '電' not in line:
+                    target_key = '特A'
+                elif '特' in line and '級' in line and '電' not in line:
+                    target_key = '特級'
+                elif '一' in line and '級' in line:
+                    target_key = '一級'
+                elif '二' in line and '級' in line:
+                    target_key = '二級'
+                elif '新' in line and '断' in line:
+                    target_key = '新断'
+                elif 'シュレッダ' in line and 'Ａ' in line:
+                    target_key = 'シュレッダーA'
+                elif 'シュレッダ' in line and 'Ｃ' in line:
+                    target_key = 'シュレッダーC'
                     
-        factories = ['田原(海上)', '田原(陸上)', '岡山(陸上)', '関西サテライト', '九州(陸上)', '宇都宮(陸上)']
+                if target_key and target_key not in res:
+                    first_num = nums[0]
+                    if not is_change:
+                        res[target_key] = first_num + '円/t'
+                    else:
+                        c_val = first_num
+                        c_fmt = c_val + '円/t' if c_val.startswith('+') or c_val.startswith('-') else ('+' + c_val + '円/t' if c_val != '0' and c_val != '±0' else '±0円/t')
+                        res[target_key] = c_fmt
+            return res
+
+        prices = parse_lines(page0_lines, is_change=False)
+        changes = parse_lines(page1_lines, is_change=True)
         
+        items_order = ['電特A', '特A', '特級', '一級', '二級', '新断', 'シュレッダーA', 'シュレッダーC']
         details = {}
-        for i, fac in enumerate(factories):
-            p_val = prices[i] if i < len(prices) else 'N/A'
-            c_val = changes[i] if i < len(changes) else '0'
-            
-            c_fmt = c_val + '円/t' if c_val.startswith('+') or c_val.startswith('-') else ('+' + c_val + '円/t' if c_val != '±0' and c_val != '0' else '±0円/t')
-            
-            details[fac] = {
-                'price': p_val + '円/t' if p_val != 'N/A' else 'N/A',
-                'change': c_fmt
+        for item in items_order:
+            details[item] = {
+                'price': prices.get(item, 'N/A'),
+                'change': changes.get(item, '±0円/t')
             }
             
         return {
+            'factory': '田原工場',
             'update_date': update_date,
             'apply_date': apply_date,
             'details': details
         }
     except Exception as e:
         print('Tokyo Steel Error:', e)
+        return None
+
+def get_mmc_precious_metals(page):
+    try:
+        page.goto('https://gold.mmc.co.jp/market/', wait_until='networkidle', timeout=60000)
+        
+        results = {}
+
+        def parse_table_for_retail(tbl):
+            rows = tbl.query_selector_all('tr')
+            price_val = ''
+            change_val = ''
+            for r in rows:
+                text = r.inner_text().strip().replace('\n', ' ')
+                if '店頭価格' in text:
+                    tds = r.query_selector_all('td')
+                    for td in tds:
+                        t_text = td.inner_text().strip()
+                        if '円/g' in t_text:
+                            if not price_val:
+                                price_val = t_text
+                            elif not change_val:
+                                change_val = t_text
+            return price_val, change_val
+
+        tables = page.query_selector_all('table')
+        if len(tables) > 4:
+            p, c = parse_table_for_retail(tables[4])
+            results['gold'] = {'name': '金 (Gold)', 'price': p, 'change': c}
+            
+        if len(tables) > 8:
+            p, c = parse_table_for_retail(tables[8])
+            results['platinum'] = {'name': 'プラチナ (Platinum)', 'price': p, 'change': c}
+            
+        if len(tables) > 10:
+            p, c = parse_table_for_retail(tables[10])
+            results['silver'] = {'name': '銀 (Silver)', 'price': p, 'change': c}
+            
+        return results
+    except Exception as e:
+        print('MMC Error:', e)
         return None
 
 def main():
@@ -267,11 +326,11 @@ def main():
         westmetall_data = get_westmetall_cash_prices_with_change(page)
         boj_forex = get_boj_forex(page)
         jx_copper = get_jx_copper(page)
-        tokyo_steel = get_tokyo_steel_shindan(page)
+        tokyo_steel = get_tokyo_steel_tahara(page)
+        mmc_metals = get_mmc_precious_metals(page)
         
         browser.close()
         
-    # 円換算計算
     central_num = boj_forex.get('central_num') if boj_forex else None
     if westmetall_data and westmetall_data.get('prices') and central_num:
         for k, v in westmetall_data['prices'].items():
@@ -284,7 +343,8 @@ def main():
         'lme_cash': westmetall_data,
         'boj_forex': boj_forex,
         'jx_copper': jx_copper,
-        'tokyo_steel': tokyo_steel
+        'tokyo_steel': tokyo_steel,
+        'mmc_metals': mmc_metals
     }
     
     if not GAS_WEBHOOK_URL:
