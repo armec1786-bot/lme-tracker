@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>金属市況ポータルダッシュボード</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-100 text-gray-800 min-h-screen">
+
+  <!-- ヘッダー -->
+  <header class="bg-slate-900 text-white shadow-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+      <div>
+        <h1 class="text-xl md:text-2xl font-bold tracking-wide flex items-center gap-2">
+          🌐 金属市況ポータル
+        </h1>
+        <p class="text-xs text-slate-400 mt-1">LME・為替・銅建値・東京製鉄・三菱マテリアル 統合ダッシュボード</p>
+      </div>
+      <button onclick="fetchData()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm px-3 py-2 rounded shadow transition flex items-center gap-1">
+        🔄 最新に更新
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6 space-y-8">
+
+    <!-- 読み込み中ローダー -->
+    <div id="loading" class="text-center py-12">
+      <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-blue-600 border-t-transparent"></div>
+      <p class="mt-3 text-slate-600 font-medium">スプレッドシートから最新市況データを読み込んでいます...</p>
+    </div>
+
+    <!-- メインコンテンツ (データ読み込み完了時に表示) -->
+    <div id="content" class="hidden space-y-8">
+
+      <!-- 1. 注目4指標 クイックカード -->
+      <section>
+        <h2 class="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
+          <span class="w-2.5 h-6 bg-blue-600 rounded-full inline-block"></span>
+          注目4指標 (最新市況)
+        </h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <!-- JX銅建値 -->
+          <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-red-600">
+            <span class="text-xs text-slate-500 font-semibold">国内 銅建値 (JX金属)</span>
+            <div id="card-jx-price" class="text-lg md:text-2xl font-black text-red-600 mt-1">--</div>
+            <div id="card-jx-diff" class="text-xs md:text-sm font-bold text-slate-600 mt-1">--</div>
+          </div>
+          <!-- ドル円 -->
+          <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-blue-600">
+            <span class="text-xs text-slate-500 font-semibold">ドル円相場 (日銀中央)</span>
+            <div id="card-usd-price" class="text-lg md:text-2xl font-black text-blue-900 mt-1">--</div>
+            <div id="card-usd-sub" class="text-xs text-slate-500 mt-1">円換算適用相場</div>
+          </div>
+          <!-- 田原工場 新断 -->
+          <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-emerald-600">
+            <span class="text-xs text-slate-500 font-semibold">東京製鉄 田原工場 (新断)</span>
+            <div id="card-ts-price" class="text-lg md:text-2xl font-black text-emerald-700 mt-1">--</div>
+            <div id="card-ts-diff" class="text-xs md:text-sm font-bold text-slate-600 mt-1">--</div>
+          </div>
+          <!-- LMEアルミ -->
+          <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-amber-500">
+            <span class="text-xs text-slate-500 font-semibold">LME アルミニウム (円換算)</span>
+            <div id="card-al-price" class="text-lg md:text-2xl font-black text-slate-800 mt-1">--</div>
+            <div id="card-al-usd" class="text-xs text-slate-500 mt-1">--</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. 注目指標 長期推移グラフ -->
+      <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+              📈 重点指標 価格推移グラフ
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5">過去ログの蓄積データを視覚的に分析できます</p>
+          </div>
+          <!-- 指標切替タブ -->
+          <div class="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-lg">
+            <button onclick="setGraphKey('JX銅建値')" id="btn-key-jx" class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold transition bg-white text-blue-600 shadow-sm">JX銅建値</button>
+            <button onclick="setGraphKey('ドル円中央相場')" id="btn-key-usd" class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold text-slate-600 hover:bg-white/50">ドル円相場</button>
+            <button onclick="setGraphKey('田原_新断')" id="btn-key-ts" class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold text-slate-600 hover:bg-white/50">田原・新断</button>
+            <button onclick="setGraphKey('アルミ_円換算')" id="btn-key-al" class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold text-slate-600 hover:bg-white/50">LMEアルミ円換算</button>
+          </div>
+        </div>
+
+        <div class="h-72 md:h-96 relative w-full">
+          <canvas id="mainChart"></canvas>
+        </div>
+      </section>
+
+      <!-- 3. 市況詳細テーブル/カード（メール順序保持） -->
+      <section class="space-y-6">
+        <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <span class="w-2.5 h-6 bg-slate-800 rounded-full inline-block"></span>
+          最新市況データ 詳細
+        </h2>
+
+        <!-- ① LME 非鉄金属 -->
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <h3 class="font-bold text-blue-900 text-md border-b pb-2 mb-3">1️⃣ LME 非鉄金属 現物価格 (Cash Settlement)</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+              <thead class="bg-slate-900 text-white text-xs">
+                <tr>
+                  <th class="p-2.5">品目</th>
+                  <th class="p-2.5 text-right">現物価格 (USD/t)</th>
+                  <th class="p-2.5 text-right">前日比 (%)</th>
+                  <th class="p-2.5 text-right">円換算価格 (JPY/t)</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-lme" class="divide-y divide-slate-100">
+                <!-- JSで動的生成 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ② 外国為替市況 (日銀) -->
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <h3 class="font-bold text-blue-800 text-md border-b pb-2 mb-3">2️⃣ 日本銀行 外国為替市況 (USD/JPY)</h3>
+          <div id="container-forex" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <!-- JSで動的生成 -->
+          </div>
+        </div>
+
+        <!-- ③ JX金属 銅建値 -->
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <h3 class="font-bold text-red-700 text-md border-b pb-2 mb-3">3️⃣ 国内 銅建値 (JX金属)</h3>
+          <div id="container-jx" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <!-- JSで動的生成 -->
+          </div>
+        </div>
+
+        <!-- ④ 東京製鉄 田原工場 -->
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <h3 class="font-bold text-emerald-800 text-md border-b pb-2 mb-3">4️⃣ 東京製鉄 国内スクラップ購入価格（田原工場）</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+              <thead class="bg-emerald-800 text-white text-xs">
+                <tr>
+                  <th class="p-2.5">品目</th>
+                  <th class="p-2.5 text-right">購入価格 (税込)</th>
+                  <th class="p-2.5 text-right">対前回改定幅 (値差)</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-ts" class="divide-y divide-slate-100">
+                <!-- JSで動的生成 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ⑤ 三菱マテリアル 貴金属 -->
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <h3 class="font-bold text-amber-700 text-md border-b pb-2 mb-3">5️⃣ 三菱マテリアル 貴金属店頭相場（店頭小売価格）</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+              <thead class="bg-amber-600 text-white text-xs">
+                <tr>
+                  <th class="p-2.5">品目</th>
+                  <th class="p-2.5 text-right">店頭小売価格 (消費税込)</th>
+                  <th class="p-2.5 text-right">前営業日比</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-mmc" class="divide-y divide-slate-100">
+                <!-- JSで動的生成 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="bg-slate-900 text-slate-400 text-xs text-center py-6 border-t border-slate-800 mt-12">
+    <p>自動配信ポータルシステム - Westmetall / 日本銀行 / JX金属 / 東京製鉄 / 三菱マテリアル</p>
+  </footer>
+
+  <script>
+    // ★ GAS Web App の URL をここにセットします
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzQy1LllxAn4j_UAtx0xKpxiM3-5M1mZ9J8bK-3uG_c_s456/exec"; // 後でご自身のURLに差し替えてください
+
+    let globalRows = [];
+    let chartInstance = null;
+    let currentKey = 'JX銅建値';
+
+    async function fetchData() {
+      document.getElementById('loading').classList.remove('hidden');
+      document.getElementById('content').classList.add('hidden');
+
+      try {
+        const resp = await fetch(GAS_API_URL);
+        const data = await resp.json();
+
+        if (data.status === 'success' && data.rows && data.rows.length > 0) {
+          globalRows = data.rows;
+          renderDashboard();
+        } else {
+          alert('データの読み込みに失敗しました。GASのURLをご確認ください。');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('通信エラーが発生しました。');
+      } finally {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+      }
+    }
+
+    function renderDashboard() {
+      const latest = globalRows[globalRows.length - 1];
+
+      // 1. クイックカード設定
+      document.getElementById('card-jx-price').innerText = latest['JX銅建値'] || 'N/A';
+      document.getElementById('card-jx-diff').innerText = latest['JX建値値差'] ? `前日比: ${latest['JX建値値差']}` : '';
+
+      document.getElementById('card-usd-price').innerText = latest['ドル円中央相場'] || 'N/A';
+
+      document.getElementById('card-ts-price').innerText = latest['田原_新断'] || 'N/A';
+      document.getElementById('card-ts-diff').innerText = latest['田原_新断値差'] ? `対前回: ${latest['田原_新断値差']}` : '';
+
+      document.getElementById('card-al-price').innerText = latest['アルミ_円換算'] ? `${Number(latest['アルミ_円換算']).toLocaleString()} 円/t` : 'N/A';
+      document.getElementById('card-al-usd').innerText = latest['アルミ_USD'] ? `$${latest['アルミ_USD']} /t` : '';
+
+      // 2. グラフ描画
+      renderChart();
+
+      // 3. テーブル＆カード群描画
+      renderTables(latest);
+    }
+
+    function setGraphKey(key) {
+      currentKey = key;
+      document.querySelectorAll('.graph-key-btn').forEach(btn => {
+        btn.classList.remove('bg-white', 'text-blue-600', 'shadow-sm');
+        btn.classList.add('text-slate-600');
+      });
+      renderChart();
+    }
+
+    function renderChart() {
+      const labels = globalRows.map(r => r['日付']);
+      const values = globalRows.map(r => {
+        let v = r[currentKey];
+        if (typeof v === 'string') {
+          v = v.replace(/[^0-9\.-]/g, '');
+        }
+        return parseFloat(v) || 0;
+      });
+
+      const ctx = document.getElementById('mainChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: currentKey,
+            data: values,
+            borderColor: '#2563eb',
+            backgroundColor: 'rgba(37, 99, 235, 0.05)',
+            borderWidth: 3,
+            fill: true,
+            tension: 0.2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: true, position: 'top' }
+          },
+          scales: {
+            y: { beginAtZero: false }
+          }
+        }
+      });
+    }
+
+    function renderTables(latest) {
+      // ① LME
+      const lmeItems = [
+        { name: '銅 (Copper)', usd: latest['銅_USD'], pct: latest['銅_前日比%'], jpy: latest['銅_円換算'] },
+        { name: 'アルミニウム (Aluminium)', usd: latest['アルミ_USD'], pct: latest['アルミ_前日比%'], jpy: latest['アルミ_円換算'] },
+        { name: '亜鉛 (Zinc)', usd: latest['亜鉛_USD'], pct: latest['亜鉛_前日比%'], jpy: latest['亜鉛_円換算'] },
+        { name: '鉛 (Lead)', usd: latest['鉛_USD'], pct: latest['鉛_前日比%'], jpy: latest['鉛_円換算'] },
+        { name: 'ニッケル (Nickel)', usd: latest['ニッケル_USD'], pct: latest['ニッケル_前日比%'], jpy: latest['ニッケル_円換算'] },
+        { name: 'スズ (Tin)', usd: latest['スズ_USD'], pct: latest['スズ_前日比%'], jpy: latest['スズ_円換算'] }
+      ];
+
+      let lmeHtml = '';
+      lmeItems.forEach(i => {
+        lmeHtml += `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2.5 font-bold">${i.name}</td>
+            <td class="p-2.5 text-right font-semibold">$${i.usd ? Number(i.usd).toLocaleString() : 'N/A'}</td>
+            <td class="p-2.5 text-right font-bold ${i.pct > 0 ? 'text-red-600' : 'text-blue-600'}">${i.pct ? (i.pct > 0 ? '+' : '') + i.pct + '%' : 'N/A'}</td>
+            <td class="p-2.5 text-right font-bold text-blue-950">${i.jpy ? Number(i.jpy).toLocaleString() + ' 円/t' : 'N/A'}</td>
+          </tr>
+        `;
+      });
+      document.getElementById('tbl-lme').innerHTML = lmeHtml;
+
+      // ② 為替
+      document.getElementById('container-forex').innerHTML = `
+        <div class="bg-slate-50 p-3 rounded-lg"><span class="font-bold">中心相場:</span> <span class="text-blue-700 font-bold text-base">${latest['ドル円中央相場'] || 'N/A'}</span></div>
+        <div class="bg-slate-50 p-3 rounded-lg"><span class="font-bold">公表日付:</span> ${latest['日付'] || 'N/A'}</div>
+      `;
+
+      // ③ JX銅建値
+      document.getElementById('container-jx').innerHTML = `
+        <div class="bg-slate-50 p-3 rounded-lg"><span class="font-bold">最新建値:</span> <span class="text-red-600 font-bold text-lg">${latest['JX銅建値'] || 'N/A'}</span></div>
+        <div class="bg-slate-50 p-3 rounded-lg"><span class="font-bold">前回比値差:</span> <span class="font-bold text-slate-800">${latest['JX建値値差'] || 'N/A'}</span></div>
+      `;
+
+      // ④ 田原工場
+      document.getElementById('tbl-ts').innerHTML = `
+        <tr>
+          <td class="p-2.5 font-bold">新断</td>
+          <td class="p-2.5 text-right font-bold">${latest['田原_新断'] || 'N/A'}</td>
+          <td class="p-2.5 text-right font-bold text-emerald-700">${latest['田原_新断値差'] || 'N/A'}</td>
+        </tr>
+      `;
+
+      // ⑤ 三菱マテリアル
+      const mmcItems = [
+        { name: '金 (Gold)', price: latest['金_店頭価格'], change: latest['金_前日比'] },
+        { name: 'プラチナ (Platinum)', price: latest['プラチナ_店頭価格'], change: latest['プラチナ_前日比'] },
+        { name: '銀 (Silver)', price: latest['銀_店頭価格'], change: latest['銀_前日比'] }
+      ];
+      let mmcHtml = '';
+      mmcItems.forEach(i => {
+        mmcHtml += `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2.5 font-bold">${i.name}</td>
+            <td class="p-2.5 text-right font-bold text-amber-700">${i.price || 'N/A'}</td>
+            <td class="p-2.5 text-right font-bold text-slate-700">${i.change || 'N/A'}</td>
+          </tr>
+        `;
+      });
+      document.getElementById('tbl-mmc').innerHTML = mmcHtml;
+    }
+
+    // 初回自動読み込み
+    window.addEventListener('DOMContentLoaded', fetchData);
+  </script>
+</body>
+</html>
