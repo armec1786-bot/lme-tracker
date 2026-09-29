@@ -12,6 +12,36 @@ from playwright.sync_api import sync_playwright
 
 GAS_WEBHOOK_URL = os.environ.get('GAS_WEBHOOK_URL', '')
 
+def get_realtime_usdjpy(page):
+    """
+    TradingView (https://www.tradingview.com/symbols/USDJPY/) からリアルタイムドル円為替レートと取得時刻を取得
+    """
+    try:
+        url = 'https://www.tradingview.com/symbols/USDJPY/'
+        page.goto(url, wait_until='networkidle', timeout=60000)
+        
+        html = page.content()
+        now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M JST')
+        
+        # 1. TradingView JSON内の last_price 抽出
+        m = re.search(r'"last_price":\s*([0-9\.]+)', html)
+        if m:
+            rate = float(m.group(1))
+            return {'rate': rate, 'time': now_str}
+            
+        # 2. HTML要素から価格抽出
+        price_elem = page.query_selector('span[class*="last-"]')
+        if price_elem:
+            t = price_elem.inner_text().strip()
+            m_val = re.search(r'([1-2][0-9]{2}\.[0-9]{2,3})', t)
+            if m_val:
+                rate = float(m_val.group(1))
+                return {'rate': rate, 'time': now_str}
+    except Exception as e:
+        print('TradingView Realtime USD/JPY Scraping Error:', e)
+        
+    return None
+
 def get_westmetall_cash_prices_with_change(page):
     fields = {
         'copper': ('銅 (Copper)', 'LME_Cu_cash'),
@@ -323,6 +353,7 @@ def main():
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         )
         
+        realtime_forex = get_realtime_usdjpy(page)
         westmetall_data = get_westmetall_cash_prices_with_change(page)
         boj_forex = get_boj_forex(page)
         jx_copper = get_jx_copper(page)
@@ -331,17 +362,23 @@ def main():
         
         browser.close()
         
-    central_num = boj_forex.get('central_num') if boj_forex else None
-    if westmetall_data and westmetall_data.get('prices') and central_num:
+    use_rate = realtime_forex.get('rate') if realtime_forex else (boj_forex.get('central_num') if boj_forex else None)
+    use_time = realtime_forex.get('time') if realtime_forex else ''
+    
+    if westmetall_data and westmetall_data.get('prices') and use_rate:
         for k, v in westmetall_data['prices'].items():
-            price_jpy = round(v['price_usd'] * central_num)
+            price_jpy = round(v['price_usd'] * use_rate)
             v['price_jpy'] = price_jpy
+            
+        westmetall_data['realtime_rate'] = use_rate
+        westmetall_data['realtime_time'] = use_time
             
     today_str = datetime.date.today().strftime('%Y-%m-%d')
     payload = {
         'date': today_str,
         'lme_cash': westmetall_data,
         'boj_forex': boj_forex,
+        'realtime_forex': realtime_forex,
         'jx_copper': jx_copper,
         'tokyo_steel': tokyo_steel,
         'mmc_metals': mmc_metals
