@@ -14,14 +14,16 @@ GAS_WEBHOOK_URL = os.environ.get('GAS_WEBHOOK_URL', '')
 
 def get_realtime_usdjpy(page):
     """
-    TradingView (https://www.tradingview.com/symbols/USDJPY/) からリアルタイムドル円為替レートと取得時刻を取得
+    TradingView (https://www.tradingview.com/symbols/USDJPY/) からリアルタイムドル円為替レートと取得時刻(JST)を取得
     """
     try:
         url = 'https://www.tradingview.com/symbols/USDJPY/'
         page.goto(url, wait_until='networkidle', timeout=60000)
         
         html = page.content()
-        now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M JST')
+        # ★ GitHub Actions (UTCサーバー) で動いても確実に日本時間 (UTC+9) に変換する
+        now_jst = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)
+        now_str = now_jst.strftime('%Y-%m-%d %H:%M JST')
         
         # 1. TradingView JSON内の last_price 抽出
         m = re.search(r'"last_price":\s*([0-9\.]+)', html)
@@ -373,7 +375,10 @@ def main():
         westmetall_data['realtime_rate'] = use_rate
         westmetall_data['realtime_time'] = use_time
             
-    today_str = datetime.date.today().strftime('%Y-%m-%d')
+    # 日本日付 (JST)
+    now_jst_today = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)
+    today_str = now_jst_today.strftime('%Y-%m-%d')
+    
     payload = {
         'date': today_str,
         'lme_cash': westmetall_data,
