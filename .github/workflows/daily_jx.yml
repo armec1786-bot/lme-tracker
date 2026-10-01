@@ -2,9 +2,8 @@ name: JX Copper Realtime Alert Monitor
 
 on:
   schedule:
-    # 平日(月～金) JST 09:40, 09:50, 10:00 (建値改定の多い時間帯)
+    # 平日(月～金) JST 09:40, 10:00 (改定チェック)
     - cron: '40 0 * * 1-5'
-    - cron: '50 0 * * 1-5'
     - cron: '0 1 * * 1-5'
   workflow_dispatch:
 
