@@ -21,17 +21,14 @@ def get_realtime_usdjpy(page):
         page.goto(url, wait_until='networkidle', timeout=60000)
         
         html = page.content()
-        # ★ GitHub Actions (UTCサーバー) で動いても確実に日本時間 (UTC+9) に変換する
         now_jst = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)
         now_str = now_jst.strftime('%Y-%m-%d %H:%M JST')
         
-        # 1. TradingView JSON内の last_price 抽出
         m = re.search(r'"last_price":\s*([0-9\.]+)', html)
         if m:
             rate = float(m.group(1))
             return {'rate': rate, 'time': now_str}
             
-        # 2. HTML要素から価格抽出
         price_elem = page.query_selector('span[class*="last-"]')
         if price_elem:
             t = price_elem.inner_text().strip()
@@ -65,28 +62,34 @@ def get_westmetall_cash_prices_with_change(page):
             tables = page.query_selector_all('table')
             if tables:
                 rows = tables[0].query_selector_all('tr')
-                if len(rows) >= 3:
-                    tds1 = rows[1].query_selector_all('td')
-                    tds2 = rows[2].query_selector_all('td')
-                    
-                    if len(tds1) >= 2 and len(tds2) >= 2:
-                        if not date_str:
-                            date_str = tds1[0].inner_text().strip()
+                data_rows = []
+                for r in rows:
+                    tds = r.query_selector_all('td')
+                    if len(tds) >= 2:
+                        d_txt = tds[0].inner_text().strip()
+                        p_txt = tds[1].inner_text().strip().replace(',', '')
+                        try:
+                            p_val = float(p_txt)
+                            data_rows.append((d_txt, p_val))
+                        except ValueError:
+                            continue
                             
-                        p1_str = tds1[1].inner_text().strip().replace(',', '')
-                        p2_str = tds2[1].inner_text().strip().replace(',', '')
+                if len(data_rows) >= 2:
+                    if not date_str:
+                        date_str = data_rows[0][0]
                         
-                        price1 = float(p1_str)
-                        price2 = float(p2_str)
-                        change_usd = price1 - price2
-                        change_pct = (change_usd / price2) * 100 if price2 != 0 else 0.0
-                        
-                        results[key] = {
-                            'name': name,
-                            'price_usd': price1,
-                            'change_usd': round(change_usd, 2),
-                            'change_pct': round(change_pct, 2)
-                        }
+                    price1 = data_rows[0][1]
+                    price2 = data_rows[1][1]
+                    
+                    change_usd = price1 - price2
+                    change_pct = (change_usd / price2) * 100 if price2 != 0 else 0.0
+                    
+                    results[key] = {
+                        'name': name,
+                        'price_usd': price1,
+                        'change_usd': round(change_usd, 2),
+                        'change_pct': round(change_pct, 2)
+                    }
         except Exception as e:
             print(f'Westmetall Error ({key}):', e)
             
@@ -375,7 +378,6 @@ def main():
         westmetall_data['realtime_rate'] = use_rate
         westmetall_data['realtime_time'] = use_time
             
-    # 日本日付 (JST)
     now_jst_today = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)
     today_str = now_jst_today.strftime('%Y-%m-%d')
     
