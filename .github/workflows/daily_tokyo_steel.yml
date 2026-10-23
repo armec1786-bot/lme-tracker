@@ -2,9 +2,9 @@ name: Tokyo Steel Scrap Price Alert Monitor
 
 on:
   schedule:
-    # 平日(月～金) JST 16:05, 16:25 (改定チェック)
-    - cron: '5 7 * * 1-5'
-    - cron: '25 7 * * 1-5'
+    # 平日(月～金) JST 16:03, 16:13 (改定チェック)
+    - cron: '3 7 * * 1-5'
+    - cron: '13 7 * * 1-5'
   workflow_dispatch:
 
 jobs:
