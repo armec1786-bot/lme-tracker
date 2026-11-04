@@ -83,13 +83,36 @@
             </h2>
             <p class="text-xs text-slate-500 mt-0.5">過去ログの蓄積データを視覚的に分析できます</p>
           </div>
-          <!-- 指標切替タブ -->
-          <div class="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-lg">
-            <button onclick="setGraphKey('JX銅建値')" id="btn-key-jx" class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold transition bg-white text-blue-600 shadow-sm">JX銅建値</button>
-            <button onclick="setGraphKey('ドル円中央相場')" id="btn-key-usd" class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold text-slate-600 hover:bg-white/50">ドル円相場</button>
-            <button onclick="setGraphKey('田原_新断')" id="btn-key-ts" class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold text-slate-600 hover:bg-white/50">田原・新断</button>
-            <button onclick="setGraphKey('アルミ_円換算')" id="btn-key-al" class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold text-slate-600 hover:bg-white/50">LMEアルミ円換算</button>
-          </div>
+         <!-- 指標切替タブ -->
+            <div class="flex flex-wrap gap-1.5 bg-slate-100 p-1 rounded-lg">
+            
+              <!-- LME銅価格：一番最初 -->
+              <button onclick="setGraphKey('銅_USD')" id="btn-key-cu"
+                class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold transition bg-white text-blue-600 shadow-sm">
+                LME銅価格
+              </button>
+            
+              <button onclick="setGraphKey('JX銅建値')" id="btn-key-jx"
+                class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold text-slate-600 hover:bg-white/50">
+                JX銅建値
+              </button>
+            
+              <button onclick="setGraphKey('ドル円中央相場')" id="btn-key-usd"
+                class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold text-slate-600 hover:bg-white/50">
+                ドル円相場
+              </button>
+            
+              <button onclick="setGraphKey('田原_新断')" id="btn-key-ts"
+                class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold text-slate-600 hover:bg-white/50">
+                田原・新断
+              </button>
+            
+              <button onclick="setGraphKey('アルミ_円換算')" id="btn-key-al"
+                class="graph-key-btn text-xs px-3 py-1.5 rounded-md font-bold text-slate-600 hover:bg-white/50">
+                LMEアルミ円換算
+              </button>
+            
+            </div>
         </div>
 
         <div class="h-72 md:h-96 relative w-full">
@@ -193,7 +216,7 @@
 
     let globalRows = [];
     let chartInstance = null;
-    let currentKey = 'JX銅建値';
+    let currentKey = '銅_USD';
 
     async function fetchData() {
       document.getElementById('loading').classList.remove('hidden');
@@ -241,13 +264,24 @@
     }
 
     function setGraphKey(key) {
-      currentKey = key;
-      document.querySelectorAll('.graph-key-btn').forEach(btn => {
-        btn.classList.remove('bg-white', 'text-blue-600', 'shadow-sm');
-        btn.classList.add('text-slate-600');
-      });
-      renderChart();
-    }
+        currentKey = key;
+      
+        document.querySelectorAll('.graph-key-btn').forEach(btn => {
+          btn.classList.remove('bg-white', 'text-blue-600', 'shadow-sm');
+          btn.classList.add('text-slate-600');
+        });
+      
+        const activeButton = document.querySelector(
+          `.graph-key-btn[onclick="setGraphKey('${key}')"]`
+        );
+      
+        if (activeButton) {
+          activeButton.classList.remove('text-slate-600');
+          activeButton.classList.add('bg-white', 'text-blue-600', 'shadow-sm');
+        }
+      
+        renderChart();
+      }
 
     function renderChart() {
       const labels = globalRows.map(r => r['日付']);
@@ -291,7 +325,17 @@
             legend: { display: true, position: 'top' }
           },
           scales: {
-            y: { beginAtZero: false }
+            y: {
+              beginAtZero: false,
+              title: {
+                display: true,
+                text: currentKey === '銅_USD' ? 'USD/t' :
+                      currentKey === 'ドル円中央相場' ? '円/USD' :
+                      currentKey === 'JX銅建値' ? '円/t' :
+                      currentKey === '田原_新断' ? '円/t' :
+                      currentKey === 'アルミ_円換算' ? '円/t' : ''
+              }
+            }
           }
         }
       });
