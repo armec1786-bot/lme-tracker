@@ -252,12 +252,20 @@
     function renderChart() {
       const labels = globalRows.map(r => r['日付']);
       const values = globalRows.map(r => {
-        let v = r[currentKey];
-        if (typeof v === 'string') {
-          v = v.replace(/[^0-9\.-]/g, '');
-        }
-        return parseFloat(v) || 0;
-      });
+  let v = r[currentKey];
+
+  if (v === null || v === undefined || v === '') {
+    return null;
+  }
+
+  if (typeof v === 'string') {
+    v = v.replace(/[^0-9.-]/g, '');
+  }
+
+  const num = Number(v);
+
+  return Number.isFinite(num) ? num : null;
+});
 
       const ctx = document.getElementById('mainChart').getContext('2d');
       if (chartInstance) chartInstance.destroy();
