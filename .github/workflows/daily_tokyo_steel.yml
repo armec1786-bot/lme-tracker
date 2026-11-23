@@ -2,8 +2,10 @@ name: Tokyo Steel Scrap Price Alert Monitor
 
 on:
   # schedule:
-  #   - cron: '37 21 * * *'
+  #   - cron: '3 7 * * 1-5'
+  #   - cron: '13 7 * * 1-5'
   workflow_dispatch:
+  
 jobs:
   check-tokyo-steel:
     runs-on: ubuntu-latest
