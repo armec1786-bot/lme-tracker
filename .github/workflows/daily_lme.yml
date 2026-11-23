@@ -1,9 +1,8 @@
 name: Daily LME Price Scraper
 
 on:
-  schedule:
-    # 毎朝 06:37 JST (UTC 21:37) に自動起動
-    - cron: '37 21 * * *'
+  # schedule:
+  #   - cron: '37 21 * * *'
   workflow_dispatch:
 
 jobs:
