@@ -1,0 +1,52 @@
+# File: .github/workflows/build_handover_bundle.yml
+name: Build Handover Bundle
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'HANDOVER_BUNDLE.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build bundle
+        run: |
+          FILES="PROJECT_HANDOVER.md requirements.txt lme_cloud_sync.py jx_copper_monitor.py tokyo_steel_monitor.py gas/gas_webhook.gs gas/scheduler.gs .github/workflows/daily_lme.yml .github/workflows/daily_jx.yml .github/workflows/daily_tokyo_steel.yml"
+          {
+            echo "# HANDOVER BUNDLE（自動生成・編集禁止）"
+            echo ""
+            echo "生成日時: $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST')"
+            echo ""
+            echo "このファイルには引き継ぎ書と主要コード一式が含まれています。"
+            for f in $FILES; do
+              if [ -f "$f" ]; then
+                echo ""
+                echo "## FILE: $f"
+                echo ""
+                echo "~~~~"
+                cat "$f"
+                echo ""
+                echo "~~~~"
+              else
+                echo ""
+                echo "## FILE: $f（リポジトリに存在しません）"
+              fi
+            done
+          } > HANDOVER_BUNDLE.md
+          echo "文字数: $(wc -m < HANDOVER_BUNDLE.md)"
+
+      - name: Commit bundle
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add HANDOVER_BUNDLE.md
+          git diff --cached --quiet || git commit -m "Update handover bundle"
+          git push
