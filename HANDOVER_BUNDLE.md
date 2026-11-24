@@ -105,7 +105,7 @@
 |---|---|---|
 | `GAS_WEBHOOK_URL` | GitHub → Settings → Secrets and variables → Actions | GASウェブアプリのURL。Pythonから送信するときに使う |
 | `GITHUB_TOKEN` | GAS → プロジェクトの設定 → スクリプト プロパティ | Fine-grained personal access token。対象は `lme-tracker` のみ。権限は Actions: Read and write、Metadata: Read-only |
-| トークンの有効期限 | なし | （期限日を記入。無期限の場合は「なし」と記入） |
+| トークンの有効期限 | ― | なし（無期限） |（期限日を記入。無期限の場合は「なし」と記入） |
 | `GH_OWNER` / `GH_REPO` | `scheduler.gs` | `armec1786-bot` / `lme-tracker` |
 | 起動するブランチ | `scheduler.gs` の `ref` | `main` |
 | `DEFAULT_RECIPIENT` | `コード.gs` | メールのTo、宛先が0件のときの送り先、警告メールの送り先 |
