@@ -1,3 +1,4 @@
+# File: .github/workflows/daily_tokyo_steel.yml
 name: Tokyo Steel Scrap Price Alert Monitor
 
 on:
@@ -5,10 +6,15 @@ on:
   #   - cron: '3 7 * * 1-5'
   #   - cron: '13 7 * * 1-5'
   workflow_dispatch:
-  
+
+concurrency:
+  group: tokyo-steel-monitor
+  cancel-in-progress: false
+
 jobs:
   check-tokyo-steel:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
       - name: Check out repository
