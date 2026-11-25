@@ -1,6 +1,6 @@
 # HANDOVER BUNDLE（自動生成・編集禁止）
 
-生成日時: 2026-11-25 16:25 JST
+生成日時: 2026-11-25 16:26 JST
 
 このファイルには引き継ぎ書と主要コード一式が含まれています。
 
@@ -1941,6 +1941,7 @@ jobs:
 ## FILE: .github/workflows/daily_tokyo_steel.yml
 
 ~~~~
+# File: .github/workflows/daily_tokyo_steel.yml
 name: Tokyo Steel Scrap Price Alert Monitor
 
 on:
@@ -1948,10 +1949,15 @@ on:
   #   - cron: '3 7 * * 1-5'
   #   - cron: '13 7 * * 1-5'
   workflow_dispatch:
-  
+
+concurrency:
+  group: tokyo-steel-monitor
+  cancel-in-progress: false
+
 jobs:
   check-tokyo-steel:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
       - name: Check out repository
