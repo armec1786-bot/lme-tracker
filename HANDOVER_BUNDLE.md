@@ -1,6 +1,6 @@
 # HANDOVER BUNDLE（自動生成・編集禁止）
 
-生成日時: 2026-11-25 15:35 JST
+生成日時: 2026-11-25 15:36 JST
 
 このファイルには引き継ぎ書と主要コード一式が含まれています。
 
@@ -1836,6 +1836,7 @@ jobs:
 ## FILE: .github/workflows/daily_jx.yml
 
 ~~~~
+# File: .github/workflows/daily_jx.yml
 name: JX Copper Realtime Alert Monitor
 
 on:
@@ -1844,9 +1845,14 @@ on:
   #   - cron: '13 1 * * 1-5'
   workflow_dispatch:
 
+concurrency:
+  group: jx-copper-monitor
+  cancel-in-progress: false
+
 jobs:
   check-jx-copper:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
       - name: Check out repository
