@@ -3,12 +3,11 @@ const GH_OWNER = "armec1786-bot";
 const GH_REPO = "lme-tracker";
 
 // everyday: true → 土日祝日も起動 / false → 平日（祝日を除く）のみ
+// JX・東京製鉄は、起動後に各スクリプト内で5分おきに確認を続ける（終了時刻はPython側の WINDOW_END）
 const SCHEDULE = [
   { workflow: "daily_lme.yml", time: "06:37", everyday: true },
-  { workflow: "daily_jx.yml", time: "09:37", everyday: false },
-  { workflow: "daily_jx.yml", time: "10:13", everyday: false },
-  { workflow: "daily_tokyo_steel.yml", time: "16:03", everyday: false },
-  { workflow: "daily_tokyo_steel.yml", time: "16:13", everyday: false }
+  { workflow: "daily_jx.yml", time: "09:20", everyday: false },
+  { workflow: "daily_tokyo_steel.yml", time: "15:55", everyday: false }
 ];
 const TZ = "Asia/Tokyo";
 
